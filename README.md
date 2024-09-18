@@ -1,5 +1,5 @@
 # ComplexWaveletFilter
-The complex wavelet filtering approach applied phasor transformed TCSPC FLIM data used in Fahim and Marcus et al. JCB 2024.
+The complex wavelet filtering approach applied to phasor transformed TCSPC FLIM data used in Fahim and Marcus et al. JCB 2024.
 
 ## Installation
 To set up the environment and run the scripts, follow these steps:
