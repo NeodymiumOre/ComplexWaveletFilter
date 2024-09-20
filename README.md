@@ -4,7 +4,7 @@ The complex wavelet filtering approach applied to phasor transformed TCSPC FLIM 
 ## Installation
 To set up the environment and run the scripts, follow these steps:
 
-### 0.0. Installation Requirements
+### 0. Installation Requirements
 Before you do anything, you’ll want to make sure your computer is properly set up for installation. This first installation version only works for Mac. Windows and Linux installation instructions will be included in later versions...
 
 In order to properly install FLIMagePy, you will need the following:
@@ -22,6 +22,13 @@ Check the Python version installed on your computer by entering the following in
 ```bash
 git --version
 ```
+
+For mac users, I recomend using Homebrew to install python and git. You can find the documentation and installation instructions at https://brew.sh/. Once Homebrew is installed on your machine, install the latest versions of python and git:
+```bash
+brew install python
+brew install git
+```
+
 ### 1. Clone the Repository
 Open your terminal app and enter the following
 ```bash
@@ -60,13 +67,13 @@ Once the dependencies are installed, you can run the main script:
 python3 ComplexWaveletFilter.py
 ```
 
-A window will popup to select the directory containing .tif files with calibrated and unfiltered phasor coordiantes (G.tif and S.tif) as well as an intensity image (intensity.tif). A sample dataset is provided. If using the sample dataset, unzip sample_data.zip and select the directory sample_data.
+A window will popup to select the directory containing .tif files with calibrated and unfiltered phasor coordiantes (G.tif and S.tif) as well as an intensity image (intensity.tif). A sample dataset is provided.If using the sample dataset, unzip sample_data.zip and select the directory sample_data.
 
-Next, enter the harmonic used for the phasor transformation
+Next, enter the harmonic used for the phasor transformation. The sample dataset provided was transformed using a harmonic of 1.
 
-Next, enter the expected lifetime of the fluoraphore being imaged
+Next, enter the expected lifetime of the fluoraphore being imaged. mNeonGreen is the fluorophore used for the sample dataset, which has an expected lifetime of 3.1ns
 
-Last, enter the desired levels of filtering
+Last, enter the desired levels of filtering. Wavelet filtered phasor plots from Fahim and Marcus et al. JCB 2024 use 9 filtering levels.
 
 ### Dependencies
 The following Python packages are required and are listed in the `requirements.txt` file:
