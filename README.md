@@ -57,7 +57,7 @@ pip install -r requirements.txt
 Once the dependencies are installed, you can run the main script:
 
 ```bash
-python ComplexWaveletFilter.py
+python3 ComplexWaveletFilter.py
 ```
 
 A window will popup to select the directory containing .tif files with calibrated and unfiltered phasor coordiantes (G.tif and S.tif) as well as an intensity image (intensity.tif). A sample dataset is provided. If using the sample dataset, unzip sample_data.zip and select the directory sample_data.
