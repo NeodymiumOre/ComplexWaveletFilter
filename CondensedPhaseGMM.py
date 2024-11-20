@@ -332,8 +332,6 @@ def plot_2d_histogram(G001, S001, I, G001_weighted, S001_weighted, ROI_center_co
     cbar.set_ticklabels(tick_labels)
     cbar.set_label('Frequency')
     
-    # 6. Save and show the plot
-    fig.savefig('/Users/leelab/FLIM_processing_dir/processed/AUTOcal/phasors/KDEL_75min_Wash_total_phasor.pdf', format='pdf')
     plt.show()
     
 def convert_list_to_array_with_dimensions(lst, rows, columns):
