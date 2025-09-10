@@ -19,6 +19,17 @@ import time
 import tkinter as tk
 from tkinter import simpledialog, filedialog
 from scipy.optimize import minimize, NonlinearConstraint
+from pathlib import Path
+
+# define parameters
+N_FRAMES = 24
+LAMBDA_FIRST_BIN = 405
+LAMBDA_LAST_BIN = 635
+LAMBDA_MIN = 400
+LAMBDA_MAX = 640
+IMAGE_WIDTH = 256
+IMAGE_HEIGHT = 256
+N_HARMONIC = 1
 
 # COMPLEX WAVELET FILTER
 
@@ -86,7 +97,7 @@ def anscombe_transform(data):
     return 2 * np.sqrt(data + (3/8))
 
 def perform_dtcwt_transform(data, N):
-    transform = dtcwt.Transform2d(biort='Legall', qshift='qshift_a')
+    transform = dtcwt.Transform2d(biort='legall', qshift='qshift_a')
     transformed_data = transform.forward(data, nlevels=N, include_scale=False)
     return transformed_data, transform
 
@@ -177,7 +188,7 @@ def update_coefficients(mandrill_t, phi_prime_matrices):
             mandrill_t.highpasses[level][:, :, band] = phi_prime
 
 def perform_inverse_dtcwt_transform(transformed_data):
-    transform = dtcwt.Transform2d(biort='Legall', qshift='qshift_a')
+    transform = dtcwt.Transform2d(biort='legall', qshift='qshift_a')
     return transform.inverse(transformed_data)
     
 def reverse_anscombe_transform(y):
@@ -255,10 +266,10 @@ def convert_list_to_array_with_dimensions(lst, rows, columns):
     return array_with_dimensions
 
 # Complex wavelet filter batch processing function
-def process_files(file_paths, G_combined, S_combined, I_combined):
-    G_unfil = load_and_process_image(file_paths["G"])
-    S_unfil = load_and_process_image(file_paths["S"])
-    Intensity = load_and_process_image(file_paths["intensity"])
+def process_files(file_paths, G_combined, S_combined, I_combined, G_unfil, S_unfil, Intensity):
+    #G_unfil = load_and_process_image(file_paths["G"])
+    #S_unfil = load_and_process_image(file_paths["S"])
+    #Intensity = load_and_process_image(file_paths["intensity"])
 
     if G_unfil is None or S_unfil is None or Intensity is None:
         print("One or more files could not be loaded. Skipping this replicate.")
@@ -267,6 +278,10 @@ def process_files(file_paths, G_combined, S_combined, I_combined):
     # Compute Fourier coefficients
     Freal_rescale = G_unfil * Intensity
     Fimag_rescale = S_unfil * Intensity
+
+    print(np.min(Freal_rescale), np.min(Fimag_rescale))
+    print(np.max(Freal_rescale), np.max(Fimag_rescale))
+    #exit()
 
     # Freal transformations and filtering
     Freal_ans = anscombe_transform(Freal_rescale)
@@ -311,8 +326,8 @@ def process_files(file_paths, G_combined, S_combined, I_combined):
     I_array = np.nan_to_num(Intensity)
 
     threshold_array = I_array > threshold
-    G001_array = np.clip(G_array * threshold_array, -0.1, 1.1)
-    S001_array = np.clip(S_array * threshold_array, -0.1, 1.1)
+    G001_array = np.clip(G_array * threshold_array, -10.0, 10.0)
+    S001_array = np.clip(S_array * threshold_array, -10.0, 10.0)
 
     # Append to combined arrays
     if G_combined.size == 0:
@@ -378,8 +393,8 @@ def plot_combined_data(G_combined, S_combined, I_combined, phasor_output_path):
     S_combined_flat = S_combined.ravel()
     I_combined_flat = I_combined.ravel().astype(int)
 
-    x_scale = [-0.005, 1.005]
-    y_scale = [0, 0.9]
+    x_scale = [-1.005, 1.005]
+    y_scale = [-1, 1]
 
     G001_weighted = np.repeat(G_combined_flat, I_combined_flat)
     S001_weighted = np.repeat(S_combined_flat, I_combined_flat)
@@ -462,32 +477,155 @@ def calculate_and_plot_lifetime(G_combined, S_combined):
 
     return T
 
+def import_image_stack(source_dir):
+    """Return np.array of size (IMAGE_HEIGHT, IMAGE_WIDTH, N_CHANNELS)
+       containing pixels from txt files. One channel per file. 
+       Order of channels is determined after sorting files by name."""
+
+    # create list of txt files sorted by name
+    txt_files = sorted([file for file in source_dir.iterdir() if file.suffix == ".txt"])
+    print(*txt_files)
+
+    # tensor for storing imported data
+    data_tensor = np.zeros((256, 256, 24))
+
+    # extract data points from each file
+    for channel, file in enumerate(txt_files):
+        channel_data = file.read_text().splitlines()
+        # convert data from text lines to numpy.array and append it to data_tensor
+        channel_data = np.array([line.strip().split(" ") for line in channel_data], dtype=int)
+        data_tensor[:, :, channel] = channel_data
+
+    return data_tensor
+
+def convert_stack_into_phasor(stack_tensor):
+    
+    print("Converting stack into phasor...")
+
+    gs_tensor = np.zeros((stack_tensor.shape[0], stack_tensor.shape[1], 3))
+    for x in range(stack_tensor.shape[0]):
+        for y in range(stack_tensor.shape[1]):
+            gs_tensor[x, y, :] = transform_pixel_into_gs_form(stack_tensor[x, y, :])
+    
+    print(f"Converted stack of shape {stack_tensor.shape} into phasor of shape {gs_tensor.shape}")
+
+    return gs_tensor
+
+
+def transform_pixel_into_gs_form(data_vector, threshold=0):
+    """Return np.array(g, s) for given pixel"""
+
+    # calculate wavelength grid (create 2x more points to represent centers of each spectral range)
+    l_vector = np.linspace(LAMBDA_MIN, LAMBDA_MAX, 2*N_FRAMES+1)
+    # leave only centers of spectral ranges in l_vector (take every 2nd point starting from index=1)
+    l_vector = l_vector[1::2]
+    # calculate sum of intensity over all channels for selected pixel
+    i_sum = sum(data_vector)
+    # calculate total wavelength range
+    L = LAMBDA_MAX - LAMBDA_MIN
+
+    # filtering out 0s and noise values
+    if i_sum <= threshold:
+        return np.zeros(3)
+    
+    # calculate vectors for trigonometric functions
+    arg = 2*np.pi*N_HARMONIC*(l_vector-l_vector[0])/L
+    sinus = np.sin(arg)
+    cosinus = np.cos(arg)
+
+    # g and s should be divided by i_sum, but that will happen after filtering them first
+    # calculate g component
+    g = np.sum(data_vector*cosinus)/i_sum
+    # calculate s component
+    s = np.sum(data_vector*sinus)/i_sum
+
+    # return g and s components as an array
+    return np.array([g, s, i_sum])
+
+def scatter_phasor(data, file_path):
+
+    setup_figure()
+
+    # plot data points
+    plt.scatter(data[:, :, 0], data[:, :, 1], s=1, alpha=0.5)
+    
+    # setup plotting parameters
+    setup_polar_plot()
+
+    plt.savefig(file_path, bbox_inches='tight')
+
+def setup_figure(figsize=(8, 5), scale=1.0):
+
+    scaled_figsize = (figsize[0]*scale, figsize[1]*scale)
+    plt.figure(figsize=scaled_figsize)
+    plt.gca().set_aspect('equal', adjustable='box')
+
+def setup_polar_plot(grid=True, black_bg=False):
+    
+    c = 'white' if black_bg else 'black'
+    
+    # draw a unit circle for reference
+    circle = plt.Circle((0, 0), 1, color=c, fill=False)
+    plt.gca().add_artist(circle)
+
+    # setup plotting parameters
+    plt.grid(grid)
+    plt.xlim(-1, 1)
+    plt.ylim(-1, 1)
+    plt.xlabel("g component", fontsize=24)
+    plt.ylabel("s component", fontsize=24)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    
+    if black_bg:
+        # change background color
+        plt.gca().set_facecolor('black')
+
+
 # Main execution script
 if __name__ == "__main__":
     # Record the start time
     start_time = time.time()
 
     # Select the input folder (which should contain G.tif, S.tif, and intensity.tif)
-    input_folder = select_input_folder()
+    #input_folder = select_input_folder()
+    input_folder = None
 
     # Automatically set output directory to the current script location
     output_base_directory = os.path.dirname(os.path.abspath(__file__))
     print(f"Output directory is set to: {output_base_directory}")
 
     # Get harmonic, tau, and flevel from user
-    H, tau, flevel = get_user_inputs()
+    #H, tau, flevel = get_user_inputs()
+    H, tau, flevel = 1, None, 2
+
+    # Import stack data from text files
+    src_dir = Path("../../projects/phd/data/us_mouse_retina/730_nm_sample")
+    stack_raw = import_image_stack(src_dir)
+
+    # Calculate phsasor
+    phasor = convert_stack_into_phasor(stack_raw)
+    print(np.min(phasor[:,:,0]), np.min(phasor[:,:,1]))
+    print(np.max(phasor[:,:,0]), np.max(phasor[:,:,1]))
+    #exit()
+
+    G_raw = phasor[:, :, 0] + 1
+    S_raw = phasor[:, :, 1] + 1
+    I_raw = phasor[:, :, 2]
+    print(np.min(G_raw), np.min(S_raw))
+    print(np.max(G_raw), np.max(S_raw))
 
     # Automatically calculate Gc and Sc
-    Gc, Sc = calculate_g_and_s(H, tau)
+    #Gc, Sc = calculate_g_and_s(H, tau)
 
     # Define file paths for G, S, and intensity files in the input folder
-    g_tif = os.path.join(input_folder, "G.tif")
-    s_tif = os.path.join(input_folder, "S.tif")
-    intensity_tif = os.path.join(input_folder, "intensity.tif")
+    #g_tif = os.path.join(input_folder, "G.tif")
+    #s_tif = os.path.join(input_folder, "S.tif")
+    #intensity_tif = os.path.join(input_folder, "intensity.tif")
 
-    # Check if the required files exist
-    if not all(map(os.path.exists, [g_tif, s_tif, intensity_tif])):
-        raise FileNotFoundError("One or more of the required .tif files (G.tif, S.tif, intensity.tif) are missing in the input folder.")
+#    # Check if the required files exist
+#    if not all(map(os.path.exists, [g_tif, s_tif, intensity_tif])):
+#        raise FileNotFoundError("One or more of the required .tif files (G.tif, S.tif, intensity.tif) are missing in the input folder.")
 
     # Initialize arrays (no need to combine datasets, so these are just placeholders)
     G_combined = np.array([]).reshape(0, 0)
@@ -497,14 +635,17 @@ if __name__ == "__main__":
     S_combined_unfil = np.array([]).reshape(0, 0)
     I_combined_unfil = np.array([]).reshape(0, 0)
 
-    # Process the G, S, and intensity .tif files
-    file_paths = {
-        "G": g_tif,
-        "S": s_tif,
-        "intensity": intensity_tif
-    }
-    G_combined, S_combined, I_combined = process_files(file_paths, G_combined, S_combined, I_combined)
-    G_combined_unfil, S_combined_unfil, I_combined_unfil  = process_unfil_files(file_paths, G_combined_unfil, S_combined_unfil, I_combined_unfil)
+#    # Process the G, S, and intensity .tif files
+#    file_paths = {
+#        "G": g_tif,
+#        "S": s_tif,
+#        "intensity": intensity_tif
+#    }
+    file_paths = []
+    G_combined, S_combined, I_combined = process_files(file_paths, G_combined, S_combined, I_combined, G_raw, S_raw, I_raw)
+    #G_combined_unfil, S_combined_unfil, I_combined_unfil  = process_unfil_files(file_paths, G_combined_unfil, S_combined_unfil, I_combined_unfil)
+    G_combined = G_combined - 1
+    S_combined = S_combined - 1
 
     # Define output file names based on the provided flevel and processing conditions
     phasor_title = f'phasor_CWFlevels={flevel}.png'
@@ -532,8 +673,18 @@ if __name__ == "__main__":
     T = calculate_and_plot_lifetime(G_combined, S_combined)
     tiff_path = os.path.join(lifetime_images_dir, tiff_file_name)
     tiff.imwrite(tiff_path, T)
+    #phasor_fil = np.array([G_combined, S_combined])
+    phasor_fil_ext = [G_combined.tolist(), S_combined.tolist(), I_combined.tolist()]
+    from copy import deepcopy
+    phasor_fil = deepcopy(phasor)
+    phasor_fil[:, :, 0] = G_combined
+    phasor_fil[:, :, 1] = S_combined
+    scatter_phasor(phasor_fil, "xd_out.png")
+    import json
+    with open("xd.json", "w", encoding='utf-8') as f:
+        json.dump(phasor_fil_ext, f, indent=4)
 
-    T_unfil = calculate_and_plot_lifetime(G_combined_unfil, S_combined_unfil)
+    #T_unfil = calculate_and_plot_lifetime(G_combined_unfil, S_combined_unfil)
     tiff_path_unfil = os.path.join(lifetime_images_unfil_dir, tiff_file_name_unfil)
     tiff.imwrite(tiff_path_unfil, T_unfil)
 
