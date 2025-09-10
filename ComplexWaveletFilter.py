@@ -600,7 +600,7 @@ if __name__ == "__main__":
     H, tau, flevel = 1, None, 2
 
     # Import stack data from text files
-    src_dir = Path("../../projects/phd/data/us_mouse_retina/730_nm_sample")
+    src_dir = Path("../../data/us_mouse_retina/730_nm_sample")
     stack_raw = import_image_stack(src_dir)
 
     # Calculate phsasor
@@ -679,9 +679,9 @@ if __name__ == "__main__":
     phasor_fil = deepcopy(phasor)
     phasor_fil[:, :, 0] = G_combined
     phasor_fil[:, :, 1] = S_combined
-    scatter_phasor(phasor_fil, "xd_out.png")
+    scatter_phasor(phasor_fil, "phasor.png")
     import json
-    with open("xd.json", "w", encoding='utf-8') as f:
+    with open("data.json", "w", encoding='utf-8') as f:
         json.dump(phasor_fil_ext, f, indent=4)
 
     #T_unfil = calculate_and_plot_lifetime(G_combined_unfil, S_combined_unfil)
